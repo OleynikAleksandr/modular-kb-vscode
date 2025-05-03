@@ -3,9 +3,69 @@ import * as fs from 'fs';
 
 /**
  * Адаптер для взаимодействия с Orchestrator Core
- * В версии 0.5.1 работает полностью независимо
+ * В версии 0.5.3 работает полностью независимо
  */
 export class OrchestratorAdapter {
+    private logDir: string;
+    private fileLoggingEnabled: boolean = false;
+    
+    constructor() {
+        try {
+            const homeDir = process.env.USERPROFILE || process.env.HOME || '';
+            if (!homeDir) {
+                console.error('Home directory not found, file logging disabled');
+                this.fileLoggingEnabled = false;
+                this.logDir = '';
+                return;
+            }
+            
+            this.logDir = path.join(homeDir, '.orchestrator', 'logs');
+            
+            this.ensureLogDirectoryExists();
+            
+            this.checkWritePermissions();
+            
+            console.log(`OrchestratorAdapter: Log directory initialized at ${this.logDir}`);
+            console.log(`OrchestratorAdapter: File logging is ${this.fileLoggingEnabled ? 'enabled' : 'disabled'}`);
+        } catch (error) {
+            console.error(`OrchestratorAdapter initialization error: ${error instanceof Error ? error.message : String(error)}`);
+            this.fileLoggingEnabled = false;
+            this.logDir = '';
+        }
+    }
+    
+    /**
+     * Проверяет и создает директорию логов
+     */
+    private ensureLogDirectoryExists(): void {
+        try {
+            if (!fs.existsSync(this.logDir)) {
+                fs.mkdirSync(this.logDir, { recursive: true });
+                console.log(`Created log directory: ${this.logDir}`);
+            }
+            this.fileLoggingEnabled = true;
+        } catch (error) {
+            console.error(`Failed to create log directory: ${error instanceof Error ? error.message : String(error)}`);
+            this.fileLoggingEnabled = false;
+        }
+    }
+    
+    /**
+     * Проверяет права на запись в директорию логов
+     */
+    private checkWritePermissions(): void {
+        try {
+            const testFile = path.join(this.logDir, 'test-write-permission.tmp');
+            fs.writeFileSync(testFile, 'test');
+            fs.unlinkSync(testFile);
+            this.fileLoggingEnabled = true;
+            console.log('Write permissions to log directory confirmed');
+        } catch (error) {
+            console.error(`No write permissions to log directory: ${error instanceof Error ? error.message : String(error)}`);
+            this.fileLoggingEnabled = false;
+        }
+    }
+    
     /**
      * Обрабатывает входящие сообщения от пользователя
      * @param messages Массив сообщений
@@ -20,8 +80,8 @@ export class OrchestratorAdapter {
             
             if (messages && messages.length > 0 && messages[0].content) {
                 const originalContent = messages[0].content;
-                messages[0].content = `[PROXY v0.5.1] ${originalContent}`;
-                this.log(`Modified first message: "${originalContent.substring(0, 50)}..." -> "[PROXY v0.5.1] ${originalContent.substring(0, 50)}..."`);
+                messages[0].content = `[PROXY v0.5.3] ${originalContent}`;
+                this.log(`Modified first message: "${originalContent.substring(0, 50)}..." -> "[PROXY v0.5.3] ${originalContent.substring(0, 50)}..."`);
             } else {
                 this.log('No messages to modify or first message has no content');
             }
@@ -75,18 +135,20 @@ export class OrchestratorAdapter {
      * @param data Данные для логирования
      */
     private logRequest(phase: 'inbound' | 'outbound', data: any): void {
+        // Всегда логируем в консоль
+        this.log(`${phase.toUpperCase()} request received`);
+        
+        if (!this.fileLoggingEnabled || !this.logDir) {
+            this.log('File logging is disabled, skipping file write', true);
+            return;
+        }
+        
         try {
-            const homeDir = process.env.USERPROFILE || process.env.HOME || '';
-            const logDir = path.join(homeDir, '.orchestrator', 'logs');
-            
-            if (!fs.existsSync(logDir)) {
-                fs.mkdirSync(logDir, { recursive: true });
-                this.log(`Created log directory: ${logDir}`);
-            }
+            this.ensureLogDirectoryExists();
             
             const now = new Date();
             const filename = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.log`;
-            const logFile = path.join(logDir, filename);
+            const logFile = path.join(this.logDir, filename);
             
             // Формируем запись лога в формате JSON Lines
             const logEntry = {
@@ -95,9 +157,21 @@ export class OrchestratorAdapter {
                 data
             };
             
-            fs.appendFileSync(logFile, JSON.stringify(logEntry) + '\n');
-            
-            this.log(`Logged ${phase} request to ${logFile}`);
+            try {
+                fs.appendFileSync(logFile, JSON.stringify(logEntry) + '\n');
+                this.log(`Successfully logged ${phase} request to ${logFile}`);
+            } catch (writeError) {
+                this.log(`Failed to write to log file: ${writeError instanceof Error ? writeError.message : String(writeError)}`, true);
+                
+                if (!fs.existsSync(logFile)) {
+                    try {
+                        fs.writeFileSync(logFile, JSON.stringify(logEntry) + '\n');
+                        this.log(`Created new log file and logged ${phase} request to ${logFile}`);
+                    } catch (createError) {
+                        this.log(`Failed to create log file: ${createError instanceof Error ? createError.message : String(createError)}`, true);
+                    }
+                }
+            }
             
             if (phase === 'inbound' && data.messages && data.messages.length > 0) {
                 const firstMessage = data.messages[0];
