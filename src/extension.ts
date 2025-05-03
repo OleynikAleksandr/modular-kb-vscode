@@ -36,8 +36,8 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Initialize Core manager for path resolution
 	coreManager = new CoreManager(context);
 	
-	// Initialize proxy manager
-	proxyManager = new ProxyManager(context);
+	// Initialize proxy manager with extension path
+	proxyManager = new ProxyManager(context.extensionPath);
 	
 	// Запускаем прокси-сервер независимо от Core
 	console.log('Автоматический запуск прокси-сервера при активации расширения...');

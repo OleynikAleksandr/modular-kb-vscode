@@ -3,6 +3,8 @@ import { Request, Response, NextFunction } from 'express';
 import * as http from 'http';
 import { Readable } from 'stream';
 import { fetch, Headers } from 'undici';
+import * as fs from 'fs';
+import * as path from 'path';
 const { createParser } = require('eventsource-parser');
 import { OrchestratorAdapter } from './orchestrator-adapter';
 

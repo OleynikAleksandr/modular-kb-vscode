@@ -1,11 +1,61 @@
-import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import * as net from 'net';
 
 /**
+ * Интерфейс для VS Code OutputChannel
+ * Используется для абстракции от конкретной реализации VS Code
+ * Это позволит легко переключаться между независимой работой и интеграцией с VS Code
+ */
+interface IOutputChannel {
+    appendLine(value: string): void;
+    show(): void;
+}
+
+/**
+ * Адаптер для вывода логов без зависимости от VS Code
+ * Реализует интерфейс IOutputChannel для совместимости
+ * 
+ * ВАЖНО: Для интеграции с VS Code в будущем:
+ * 1. Раскомментируйте импорт vscode в начале файла
+ * 2. Используйте vscode.window.createOutputChannel вместо этого класса
+ */
+class ConsoleOutputChannelAdapter implements IOutputChannel {
+    private readonly channelName: string;
+    
+    constructor(channelName: string) {
+        this.channelName = channelName;
+    }
+    
+    appendLine(value: string): void {
+        console.log(`[${this.channelName}] ${value}`);
+    }
+    
+    show(): void {
+    }
+}
+
+/**
  * Класс для управления процессом прокси-сервера
+ * В версии 0.5.2 работает полностью независимо от VS Code и Orchestrator
+ * 
+ * ВАЖНО: Для интеграции с VS Code в будущем:
+ * 1. Раскомментируйте импорт vscode в начале файла
+ * 2. Измените конструктор для принятия vscode.ExtensionContext
+ * 3. Используйте vscode.window.showWarningMessage вместо console.warn
+ * 
+ * Пример интеграции с VS Code:
+ * ```typescript
+ * // import * as vscode from 'vscode';
+ * 
+ * constructor(context: vscode.ExtensionContext) {
+ *   this.proxyPath = path.join(context.extensionPath, 'dist', 'proxy.js');
+ *   this.outputChannel = vscode.window.createOutputChannel('ModularKB Proxy Manager');
+ *   this.outputChannel.show();
+ *   this.log(`ProxyManager initialized. Proxy path: ${this.proxyPath}`);
+ * }
+ * ```
  */
 export class ProxyManager {
     private readonly proxyPath: string;
@@ -13,21 +63,22 @@ export class ProxyManager {
     private proxyProcess: ChildProcess | null = null;
     private healthCheckInterval: NodeJS.Timeout | null = null;
     private isStopped: boolean = false;
-    private outputChannel: vscode.OutputChannel;
+    private outputChannel: IOutputChannel;
     
     /**
      * Конструктор
-     * @param context Контекст расширения
+     * @param extensionPath Путь к расширению
      */
-    constructor(private context: vscode.ExtensionContext) {
-        this.proxyPath = path.join(context.extensionPath, 'dist', 'proxy.js');
-        this.outputChannel = vscode.window.createOutputChannel('ModularKB Proxy Manager');
-        this.outputChannel.show();
+    constructor(private extensionPath: string) {
+        this.proxyPath = path.join(extensionPath, 'dist', 'proxy.js');
+        
+        this.outputChannel = new ConsoleOutputChannelAdapter('ModularKB Proxy Manager');
+        
         this.log(`ProxyManager initialized. Proxy path: ${this.proxyPath}`);
     }
     
     /**
-     * Логирует сообщения в канал вывода VS Code
+     * Логирует сообщения в канал вывода
      * @param message Сообщение для логирования
      * @param isError Флаг ошибки
      */
@@ -175,10 +226,16 @@ export class ProxyManager {
             const proxyUrl = process.env.GH_COPILOT_OVERRIDE_PROXY_URL;
             if (!proxyUrl) {
                 this.log('GH_COPILOT_OVERRIDE_PROXY_URL environment variable not set', true);
-                vscode.window.showWarningMessage(
+                console.warn(
                     'Environment variable GH_COPILOT_OVERRIDE_PROXY_URL is not set. ' +
                     'Copilot Chat will not use the proxy. Launch VS Code with this variable set.'
                 );
+                
+                // ВАЖНО: Для интеграции с VS Code в будущем:
+                // vscode.window.showWarningMessage(
+                //     'Environment variable GH_COPILOT_OVERRIDE_PROXY_URL is not set. ' +
+                //     'Copilot Chat will not use the proxy. Launch VS Code with this variable set.'
+                // );
             } else {
                 this.log(`GH_COPILOT_OVERRIDE_PROXY_URL is set to: ${proxyUrl}`);
             }

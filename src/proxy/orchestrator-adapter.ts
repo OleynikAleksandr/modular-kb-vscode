@@ -1,20 +1,11 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import * as vscode from 'vscode';
 
 /**
  * Адаптер для взаимодействия с Orchestrator Core
- * В версии 0.5.1 работает независимо от Orchestrator
+ * В версии 0.5.1 работает полностью независимо
  */
 export class OrchestratorAdapter {
-    private outputChannel: vscode.OutputChannel;
-    
-    constructor() {
-        this.outputChannel = vscode.window.createOutputChannel('ModularKB Proxy');
-        this.outputChannel.show();
-        this.log('OrchestratorAdapter initialized');
-    }
-    
     /**
      * Обрабатывает входящие сообщения от пользователя
      * @param messages Массив сообщений
@@ -26,13 +17,6 @@ export class OrchestratorAdapter {
         
         try {
             this.logRequest('inbound', { messages, meta });
-            
-            // ЗАГЛУШКА: В будущем здесь будет интеграция с Orchestrator Core
-            /*
-            if (orchestratorCore && orchestratorCore.isAvailable()) {
-                return await orchestratorCore.processMessages(messages, meta);
-            }
-            */
             
             if (messages && messages.length > 0 && messages[0].content) {
                 const originalContent = messages[0].content;
@@ -62,13 +46,6 @@ export class OrchestratorAdapter {
             
             this.logRequest('outbound', { chunk, meta });
             
-            // ЗАГЛУШКА: В будущем здесь будет интеграция с Orchestrator Core
-            /*
-            if (orchestratorCore && orchestratorCore.isAvailable()) {
-                return await orchestratorCore.processResponse(chunk, meta);
-            }
-            */
-            
             return chunk;
         } catch (error) {
             this.log(`Error in processResponse: ${error instanceof Error ? error.message : String(error)}`, true);
@@ -77,15 +54,13 @@ export class OrchestratorAdapter {
     }
     
     /**
-     * Логирует сообщения в канал вывода VS Code
+     * Логирует сообщения в консоль
      * @param message Сообщение для логирования
      * @param isError Флаг ошибки
      */
     private log(message: string, isError: boolean = false): void {
         const timestamp = new Date().toISOString();
         const formattedMessage = `[${timestamp}] ${message}`;
-        
-        this.outputChannel.appendLine(formattedMessage);
         
         if (isError) {
             console.error(formattedMessage);
