@@ -13,6 +13,7 @@ export class ProxyManager {
     private proxyProcess: ChildProcess | null = null;
     private healthCheckInterval: NodeJS.Timeout | null = null;
     private isStopped: boolean = false;
+    private outputChannel: vscode.OutputChannel;
     
     /**
      * Конструктор
@@ -20,7 +21,27 @@ export class ProxyManager {
      */
     constructor(private context: vscode.ExtensionContext) {
         this.proxyPath = path.join(context.extensionPath, 'dist', 'proxy.js');
-        console.log(`ProxyManager: Путь к прокси: ${this.proxyPath}`);
+        this.outputChannel = vscode.window.createOutputChannel('ModularKB Proxy Manager');
+        this.outputChannel.show();
+        this.log(`ProxyManager initialized. Proxy path: ${this.proxyPath}`);
+    }
+    
+    /**
+     * Логирует сообщения в канал вывода VS Code
+     * @param message Сообщение для логирования
+     * @param isError Флаг ошибки
+     */
+    private log(message: string, isError: boolean = false): void {
+        const timestamp = new Date().toISOString();
+        const formattedMessage = `[${timestamp}] ${message}`;
+        
+        this.outputChannel.appendLine(formattedMessage);
+        
+        if (isError) {
+            console.error(formattedMessage);
+        } else {
+            console.log(formattedMessage);
+        }
     }
     
     /**
@@ -32,14 +53,15 @@ export class ProxyManager {
             try {
                 const isPortFree = await this.isPortFree(port);
                 if (isPortFree) {
+                    this.log(`Found free port: ${port}`);
                     return port;
                 }
             } catch (error) {
-                console.error(`ProxyManager: Ошибка при проверке порта ${port}:`, error);
+                this.log(`Error checking port ${port}: ${error instanceof Error ? error.message : String(error)}`, true);
             }
         }
         
-        console.warn('ProxyManager: Все порты в диапазоне 7001-7010 заняты');
+        this.log('All ports in range 7001-7010 are busy. Using default port 7001.', true);
         return 7001;
     }
     
@@ -71,20 +93,28 @@ export class ProxyManager {
      */
     public async isProxyAvailable(): Promise<boolean> {
         if (!this.proxyPort) {
+            this.log('Proxy port not set, proxy is not available');
             return false;
         }
         
         try {
             const url = `http://127.0.0.1:${this.proxyPort}/ping`;
+            this.log(`Checking proxy availability at ${url}`);
             
             const response = await fetch(url, { 
                 method: 'GET',
                 headers: { 'Accept': 'application/json' }
             });
             
+            if (response.ok) {
+                this.log(`Proxy is available on port ${this.proxyPort}`);
+            } else {
+                this.log(`Proxy health check failed with status ${response.status}`, true);
+            }
+            
             return response.ok;
         } catch (error) {
-            console.error('ProxyManager: Ошибка при проверке доступности прокси:', error);
+            this.log(`Error checking proxy availability: ${error instanceof Error ? error.message : String(error)}`, true);
             return false;
         }
     }
@@ -96,7 +126,7 @@ export class ProxyManager {
      */
     public async startProxy(port: number): Promise<boolean> {
         try {
-            console.log(`ProxyManager: Запуск прокси на порту ${port}`);
+            this.log(`Starting proxy on port ${port}`);
             
             this.proxyProcess = spawn('node', [this.proxyPath, '--port', port.toString()], {
                 cwd: path.dirname(this.proxyPath),
@@ -107,20 +137,20 @@ export class ProxyManager {
             });
             
             this.proxyProcess.stdout?.on('data', (data) => {
-                console.log(`Proxy stdout: ${data}`);
+                this.log(`Proxy stdout: ${data}`);
             });
             
             this.proxyProcess.stderr?.on('data', (data) => {
-                console.error(`Proxy stderr: ${data}`);
+                this.log(`Proxy stderr: ${data}`, true);
             });
             
             this.proxyProcess.on('close', (code) => {
-                console.log(`Proxy process exited with code ${code}`);
+                this.log(`Proxy process exited with code ${code}`);
                 this.proxyProcess = null;
                 this.proxyPort = null;
                 
                 if (!this.isStopped) {
-                    console.log('ProxyManager: Прокси-сервер неожиданно завершил работу, перезапускаем...');
+                    this.log('Proxy server unexpectedly terminated, restarting...');
                     this.ensureProxyAvailable();
                 }
             });
@@ -130,27 +160,32 @@ export class ProxyManager {
             
             this.setupHealthCheck();
             
+            this.log('Waiting for proxy to start...');
             await new Promise(resolve => setTimeout(resolve, 2000));
             
             const isAvailable = await this.isProxyAvailable();
             if (!isAvailable) {
-                console.error('ProxyManager: Прокси запущен, но не отвечает на проверку доступности');
+                this.log('Proxy started but not responding to health check', true);
                 this.stopProxy();
                 return false;
             }
             
-            console.log(`ProxyManager: Прокси успешно запущен на порту ${port}`);
+            this.log(`Proxy successfully started on port ${port}`);
             
-            if (!process.env.GH_COPILOT_OVERRIDE_PROXY_URL) {
+            const proxyUrl = process.env.GH_COPILOT_OVERRIDE_PROXY_URL;
+            if (!proxyUrl) {
+                this.log('GH_COPILOT_OVERRIDE_PROXY_URL environment variable not set', true);
                 vscode.window.showWarningMessage(
-                    'Переменная окружения GH_COPILOT_OVERRIDE_PROXY_URL не установлена. ' +
-                    'Copilot Chat не будет использовать прокси. Запустите VS Code с этой переменной.'
+                    'Environment variable GH_COPILOT_OVERRIDE_PROXY_URL is not set. ' +
+                    'Copilot Chat will not use the proxy. Launch VS Code with this variable set.'
                 );
+            } else {
+                this.log(`GH_COPILOT_OVERRIDE_PROXY_URL is set to: ${proxyUrl}`);
             }
             
             return true;
         } catch (error) {
-            console.error('ProxyManager: Ошибка при запуске прокси:', error);
+            this.log(`Error starting proxy: ${error instanceof Error ? error.message : String(error)}`, true);
             return false;
         }
     }
@@ -161,14 +196,19 @@ export class ProxyManager {
     private setupHealthCheck(): void {
         if (this.healthCheckInterval) {
             clearInterval(this.healthCheckInterval);
+            this.log('Cleared previous health check interval');
         }
         
+        this.log('Setting up health check interval (30 seconds)');
         this.healthCheckInterval = setInterval(async () => {
             if (this.proxyPort) {
+                this.log('Running scheduled health check');
                 const isAvailable = await this.isProxyAvailable();
                 if (!isAvailable && !this.isStopped) {
-                    console.log('ProxyManager: Прокси не отвечает на проверку работоспособности, перезапускаем...');
+                    this.log('Proxy not responding to health check, restarting...', true);
                     this.restartProxy();
+                } else if (isAvailable) {
+                    this.log('Health check passed');
                 }
             }
         }, 30000);
@@ -178,11 +218,14 @@ export class ProxyManager {
      * Перезапускает прокси-сервер
      */
     private async restartProxy(): Promise<void> {
+        this.log('Restarting proxy server');
         this.stopProxy();
         
+        this.log('Waiting before restart...');
         await new Promise(resolve => setTimeout(resolve, 1000));
         
         const port = await this.findFreeProxyPort();
+        this.log(`Restarting proxy on port ${port}`);
         await this.startProxy(port);
     }
     
@@ -192,24 +235,27 @@ export class ProxyManager {
      */
     public async ensureProxyAvailable(): Promise<boolean> {
         try {
+            this.log('Ensuring proxy is available');
             const isAvailable = await this.isProxyAvailable();
             if (isAvailable) {
-                console.log('ProxyManager: Прокси уже доступен');
+                this.log('Proxy is already available');
                 return true;
             }
             
+            this.log('Proxy is not available, starting it');
             const port = await this.findFreeProxyPort();
-            console.log(`ProxyManager: Найден свободный порт: ${port}`);
+            this.log(`Found free port: ${port}`);
             
             const isStarted = await this.startProxy(port);
             if (!isStarted) {
-                console.error('ProxyManager: Не удалось запустить прокси');
+                this.log('Failed to start proxy', true);
                 return false;
             }
             
+            this.log('Proxy is now available');
             return true;
         } catch (error) {
-            console.error('ProxyManager: Ошибка при обеспечении доступности прокси:', error);
+            this.log(`Error ensuring proxy availability: ${error instanceof Error ? error.message : String(error)}`, true);
             return false;
         }
     }
@@ -218,17 +264,23 @@ export class ProxyManager {
      * Останавливает прокси-сервер
      */
     public stopProxy(): void {
+        this.log('Stopping proxy server');
+        
         if (this.healthCheckInterval) {
             clearInterval(this.healthCheckInterval);
             this.healthCheckInterval = null;
+            this.log('Cleared health check interval');
         }
         
         if (this.proxyProcess) {
-            console.log('ProxyManager: Останавливаем прокси-сервер');
+            this.log(`Stopping proxy process on port ${this.proxyPort}`);
             this.isStopped = true;
             this.proxyProcess.kill();
             this.proxyProcess = null;
             this.proxyPort = null;
+            this.log('Proxy process terminated');
+        } else {
+            this.log('No proxy process to stop');
         }
     }
 }
