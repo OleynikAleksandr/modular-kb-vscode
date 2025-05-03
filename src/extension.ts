@@ -2,11 +2,13 @@
 import * as vscode from 'vscode';
 import { ModuleRegistry } from './core/registry/ModuleRegistry';
 import { CoreManager } from './core/CoreManager';
+import { ProxyManager } from './proxy/ProxyManager';
 
 // Global module registry
 let moduleRegistry: ModuleRegistry;
 // Core manager
 let coreManager: CoreManager;
+let proxyManager: ProxyManager;
 
 // Синхронное создание директории modules
 function ensureModulesDirSyncExists(modulesPath: string): boolean {
@@ -33,6 +35,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// Initialize Core manager for path resolution
 	coreManager = new CoreManager(context);
+	
+	// Initialize proxy manager
+	proxyManager = new ProxyManager(context);
 
 	// Синхронно создаём директорию модулей до любых других действий
 	const modulesPathCreated = ensureModulesDirSyncExists(coreManager.modulesPath);
@@ -74,6 +79,15 @@ export async function activate(context: vscode.ExtensionContext) {
 				if (!isRegistered) {
 					vscode.window.showErrorMessage('Failed to register MCP server. KB Core may not function properly.');
 					return;
+				}
+				
+				// Запускаем прокси-сервер
+				console.log('Автоматический запуск прокси-сервера...');
+				const isProxyStarted = await proxyManager.ensureProxyAvailable();
+				if (!isProxyStarted) {
+					vscode.window.showWarningMessage('Failed to start proxy server. Copilot Chat may not work properly.');
+				} else {
+					console.log('Прокси-сервер успешно запущен');
 				}
 				
 				vscode.window.showInformationMessage(`KB Core started automatically and running on port ${port}.`);
@@ -255,5 +269,11 @@ export async function deactivate() {
 	if (coreManager) {
 		console.log('Останавливаем KB Core процесс при деактивации расширения...');
 		coreManager.stopCore();
+	}
+	
+	// Останавливаем прокси-сервер при закрытии IDE
+	if (proxyManager) {
+		console.log('Останавливаем прокси-сервер при деактивации расширения...');
+		proxyManager.stopProxy();
 	}
 }
