@@ -1,0 +1,24 @@
+# Игнорировать директории сборки и зависимостей
+out/
+dist/
+node_modules/
+.vscode-test/
+
+# Игнорировать файлы сборки
+*.vsix
+
+# Игнорировать временные файлы
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+
+# Игнорировать документацию вне проекта
+../DOC/
+
+# Игнорировать настройки VS Code, кроме необходимых
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
