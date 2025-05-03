@@ -1,6 +1,5 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import * as vscode from 'vscode';
 
 /**
  * Интерфейс для VS Code OutputChannel
@@ -9,6 +8,22 @@ import * as vscode from 'vscode';
 interface IOutputChannel {
     appendLine(value: string): void;
     show(): void;
+}
+
+/**
+ * Реализация OutputChannel для использования вне VS Code
+ */
+class ConsoleOutputChannel implements IOutputChannel {
+    constructor(private name: string) {
+        console.log(`[${name}] Output channel created`);
+    }
+    
+    appendLine(value: string): void {
+        console.log(`[${this.name}] ${value}`);
+    }
+    
+    show(): void {
+    }
 }
 
 /**
@@ -21,7 +36,7 @@ export class OrchestratorAdapter {
     private outputChannel: IOutputChannel;
     
     constructor() {
-        this.outputChannel = vscode.window.createOutputChannel('ModularKB Proxy Requests');
+        this.outputChannel = new ConsoleOutputChannel('ModularKB Proxy Requests');
         this.outputChannel.show();
         
         try {

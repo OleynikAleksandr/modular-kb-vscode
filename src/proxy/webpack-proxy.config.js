@@ -14,7 +14,6 @@ const proxyConfig = {
     libraryTarget: 'commonjs2'
   },
   externals: {
-    vscode: 'commonjs vscode'
   },
   resolve: {
     extensions: ['.ts', '.js']
