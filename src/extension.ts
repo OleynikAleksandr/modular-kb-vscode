@@ -1,12 +1,15 @@
 // The module 'vscode' contains the VS Code extensibility API
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { ModuleRegistry } from './core/registry/ModuleRegistry';
 import { CoreManager } from './core/CoreManager';
+import { ProxyManager } from './proxy/ProxyManager';
 
 // Global module registry
 let moduleRegistry: ModuleRegistry;
 // Core manager
 let coreManager: CoreManager;
+let proxyManager: ProxyManager;
 
 // Синхронное создание директории modules
 function ensureModulesDirSyncExists(modulesPath: string): boolean {
@@ -33,6 +36,23 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// Initialize Core manager for path resolution
 	coreManager = new CoreManager(context);
+	
+	// Initialize proxy manager with extension path
+	proxyManager = new ProxyManager(context.extensionPath);
+	
+	// Запускаем прокси-сервер независимо от Core
+	console.log('Автоматический запуск прокси-сервера при активации расширения...');
+	proxyManager.ensureProxyAvailable().then(isProxyStarted => {
+		if (!isProxyStarted) {
+			vscode.window.showWarningMessage('Failed to start proxy server. Copilot Chat may not work properly.');
+		} else {
+			console.log('Прокси-сервер успешно запущен');
+			vscode.window.showInformationMessage('Proxy server for Copilot Chat started successfully.');
+		}
+	}).catch(error => {
+		console.error('Ошибка при запуске прокси-сервера:', error);
+		vscode.window.showErrorMessage('Error starting proxy server: ' + (error instanceof Error ? error.message : String(error)));
+	});
 
 	// Синхронно создаём директорию модулей до любых других действий
 	const modulesPathCreated = ensureModulesDirSyncExists(coreManager.modulesPath);
@@ -74,6 +94,15 @@ export async function activate(context: vscode.ExtensionContext) {
 				if (!isRegistered) {
 					vscode.window.showErrorMessage('Failed to register MCP server. KB Core may not function properly.');
 					return;
+				}
+				
+				// Запускаем прокси-сервер
+				console.log('Автоматический запуск прокси-сервера...');
+				const isProxyStarted = await proxyManager.ensureProxyAvailable();
+				if (!isProxyStarted) {
+					vscode.window.showWarningMessage('Failed to start proxy server. Copilot Chat may not work properly.');
+				} else {
+					console.log('Прокси-сервер успешно запущен');
 				}
 				
 				vscode.window.showInformationMessage(`KB Core started automatically and running on port ${port}.`);
@@ -223,12 +252,122 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	// Register command to start proxy
+	const startProxyCommand = vscode.commands.registerCommand('kb.startProxy', async () => {
+		try {
+			console.log('Выполнена команда "kb.startProxy"');
+			const isProxyAvailable = await proxyManager.isProxyAvailable();
+			if (isProxyAvailable) {
+				vscode.window.showInformationMessage('Proxy server is already running.');
+				return;
+			}
+			
+			vscode.window.showInformationMessage('Starting proxy server...');
+			const isStarted = await proxyManager.ensureProxyAvailable();
+			if (!isStarted) {
+				vscode.window.showErrorMessage('Failed to start proxy server.');
+				return;
+			}
+			
+			vscode.window.showInformationMessage(`Proxy server started successfully.`);
+		} catch (error) {
+			console.error('Ошибка при запуске прокси:', error);
+			vscode.window.showErrorMessage(`Error starting proxy server: ${error instanceof Error ? error.message : error}`);
+		}
+	});
+	
+	// Register command to stop proxy
+	const stopProxyCommand = vscode.commands.registerCommand('kb.stopProxy', async () => {
+		try {
+			console.log('Выполнена команда "kb.stopProxy"');
+			proxyManager.stopProxy();
+			vscode.window.showInformationMessage('Proxy server stopped.');
+		} catch (error) {
+			console.error('Ошибка при остановке прокси:', error);
+			vscode.window.showErrorMessage(`Error stopping proxy server: ${error instanceof Error ? error.message : error}`);
+		}
+	});
+
+	// Register command to create patch script for Copilot Chat
+	const createPatchScriptCommand = vscode.commands.registerCommand('kb.createPatchScript', async () => {
+		try {
+			console.log('Выполнена команда "kb.createPatchScript"');
+			const scriptPath = proxyManager.createPatchScript();
+			if (scriptPath) {
+				vscode.window.showInformationMessage(
+					`Patch script created at ${scriptPath}. Run this script to fix bug #7802 in Copilot Chat 0.26.x.`,
+					'Open Folder'
+				).then(selection => {
+					if (selection === 'Open Folder') {
+						vscode.env.openExternal(vscode.Uri.file(path.dirname(scriptPath)));
+					}
+				});
+			} else {
+				vscode.window.showErrorMessage('Failed to create patch script.');
+			}
+		} catch (error) {
+			console.error('Ошибка при создании скрипта патча:', error);
+			vscode.window.showErrorMessage(`Error creating patch script: ${error instanceof Error ? error.message : error}`);
+		}
+	});
+	
+	// Register command to create proxy setup script
+	const createProxySetupScriptCommand = vscode.commands.registerCommand('kb.createProxySetupScript', async () => {
+		try {
+			console.log('Выполнена команда "kb.createProxySetupScript"');
+			const scriptPath = proxyManager.createProxySetupScript();
+			if (scriptPath) {
+				vscode.window.showInformationMessage(
+					`Proxy setup script created at ${scriptPath}. Run this script to set HTTP_PROXY and HTTPS_PROXY environment variables.`,
+					'Open Folder'
+				).then(selection => {
+					if (selection === 'Open Folder') {
+						vscode.env.openExternal(vscode.Uri.file(path.dirname(scriptPath)));
+					}
+				});
+			} else {
+				vscode.window.showErrorMessage('Failed to create proxy setup script.');
+			}
+		} catch (error) {
+			console.error('Ошибка при создании скрипта настройки прокси:', error);
+			vscode.window.showErrorMessage(`Error creating proxy setup script: ${error instanceof Error ? error.message : error}`);
+		}
+	});
+	
+	// Register command to create restore script for Copilot Chat
+	const createRestoreScriptCommand = vscode.commands.registerCommand('kb.createRestoreScript', async () => {
+		try {
+			console.log('Выполнена команда "kb.createRestoreScript"');
+			const scriptPath = proxyManager.createRestoreScript();
+			if (scriptPath) {
+				vscode.window.showInformationMessage(
+					`Restore script created at ${scriptPath}. Run this script to restore original Copilot Chat extension.js file.`,
+					'Open Folder'
+				).then(selection => {
+					if (selection === 'Open Folder') {
+						vscode.env.openExternal(vscode.Uri.file(path.dirname(scriptPath)));
+					}
+				});
+			} else {
+				vscode.window.showErrorMessage('Failed to create restore script.');
+			}
+		} catch (error) {
+			console.error('Ошибка при создании скрипта восстановления:', error);
+			vscode.window.showErrorMessage(`Error creating restore script: ${error instanceof Error ? error.message : error}`);
+		}
+	});
+
 	// Register all commands
 	context.subscriptions.push(
 		scanModulesCommand,
 		installModuleCommand,
 		startCoreCommand,
-		stopCoreCommand
+		stopCoreCommand,
+		startProxyCommand,
+		stopProxyCommand,
+		createPatchScriptCommand,
+		createProxySetupScriptCommand,
+		createRestoreScriptCommand
 	);
 
 	// Scan and load external modules on startup
@@ -255,5 +394,11 @@ export async function deactivate() {
 	if (coreManager) {
 		console.log('Останавливаем KB Core процесс при деактивации расширения...');
 		coreManager.stopCore();
+	}
+	
+	// Останавливаем прокси-сервер при закрытии IDE
+	if (proxyManager) {
+		console.log('Останавливаем прокси-сервер при деактивации расширения...');
+		proxyManager.stopProxy();
 	}
 }
