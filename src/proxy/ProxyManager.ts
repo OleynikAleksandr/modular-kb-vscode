@@ -516,4 +516,71 @@ pause
             this.log('No proxy process to stop');
         }
     }
+    
+    /**
+     * Создает скрипт для восстановления оригинального extension.js файла Copilot Chat
+     * @returns Путь к созданному скрипту
+     */
+    public createRestoreScript(): string {
+        try {
+            this.log('Creating restore script for Copilot Chat extension.js');
+            
+            const scriptContent = `@echo off
+echo Restoring original Copilot Chat extension.js file...
+echo.
+
+set VSCODE_DIR=%USERPROFILE%\\.vscode
+if not exist "%VSCODE_DIR%" (
+    echo VS Code directory not found at %VSCODE_DIR%
+    exit /b 1
+)
+
+set EXTENSION_DIR=%VSCODE_DIR%\\extensions
+if not exist "%EXTENSION_DIR%" (
+    echo Extensions directory not found at %EXTENSION_DIR%
+    exit /b 1
+)
+
+set FOUND=0
+for /d %%i in ("%EXTENSION_DIR%\\github.copilot-chat-0.26.*") do (
+    set COPILOT_DIR=%%i
+    set FOUND=1
+)
+
+if %FOUND% == 0 (
+    echo Copilot Chat 0.26.x not found in %EXTENSION_DIR%
+    exit /b 1
+)
+
+set EXTENSION_JS=%COPILOT_DIR%\\dist\\extension.js
+set BACKUP_JS=%EXTENSION_JS%.bak
+
+if not exist "%BACKUP_JS%" (
+    echo Backup file not found at %BACKUP_JS%
+    echo No restore needed or backup was deleted
+    exit /b 1
+)
+
+echo Found backup at %BACKUP_JS%
+echo Restoring original file...
+copy "%BACKUP_JS%" "%EXTENSION_JS%" /Y
+
+echo.
+echo Restore completed successfully!
+echo Copilot Chat should now work normally.
+echo.
+pause
+`;
+            
+            const scriptPath = path.join(this.extensionPath, 'restore-copilot-chat.bat');
+            fs.writeFileSync(scriptPath, scriptContent);
+            
+            this.log(`Restore script created at ${scriptPath}`);
+            
+            return scriptPath;
+        } catch (error) {
+            this.log(`Error creating restore script: ${error instanceof Error ? error.message : String(error)}`, true);
+            return '';
+        }
+    }
 }

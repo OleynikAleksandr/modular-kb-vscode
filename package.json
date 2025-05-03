@@ -8,7 +8,7 @@
   },
   "displayName": "Modular KB Extension",
   "description": "Modular Architecture for Extensible Knowledge Base in VS Code using Always-IDE model",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -57,6 +57,11 @@
       {
         "command": "kb.createProxySetupScript",
         "title": "Create Proxy Setup Script",
+        "category": "Modular KB"
+      },
+      {
+        "command": "kb.createRestoreScript",
+        "title": "Create Copilot Chat Restore Script",
         "category": "Modular KB"
       }
     ]

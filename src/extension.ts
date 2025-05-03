@@ -333,6 +333,29 @@ export async function activate(context: vscode.ExtensionContext) {
 			vscode.window.showErrorMessage(`Error creating proxy setup script: ${error instanceof Error ? error.message : error}`);
 		}
 	});
+	
+	// Register command to create restore script for Copilot Chat
+	const createRestoreScriptCommand = vscode.commands.registerCommand('kb.createRestoreScript', async () => {
+		try {
+			console.log('Выполнена команда "kb.createRestoreScript"');
+			const scriptPath = proxyManager.createRestoreScript();
+			if (scriptPath) {
+				vscode.window.showInformationMessage(
+					`Restore script created at ${scriptPath}. Run this script to restore original Copilot Chat extension.js file.`,
+					'Open Folder'
+				).then(selection => {
+					if (selection === 'Open Folder') {
+						vscode.env.openExternal(vscode.Uri.file(path.dirname(scriptPath)));
+					}
+				});
+			} else {
+				vscode.window.showErrorMessage('Failed to create restore script.');
+			}
+		} catch (error) {
+			console.error('Ошибка при создании скрипта восстановления:', error);
+			vscode.window.showErrorMessage(`Error creating restore script: ${error instanceof Error ? error.message : error}`);
+		}
+	});
 
 	// Register all commands
 	context.subscriptions.push(
@@ -343,7 +366,8 @@ export async function activate(context: vscode.ExtensionContext) {
 		startProxyCommand,
 		stopProxyCommand,
 		createPatchScriptCommand,
-		createProxySetupScriptCommand
+		createProxySetupScriptCommand,
+		createRestoreScriptCommand
 	);
 
 	// Scan and load external modules on startup
