@@ -8,7 +8,7 @@
   },
   "displayName": "Modular KB Extension",
   "description": "Modular Architecture for Extensible Knowledge Base in VS Code using Always-IDE model",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "engines": {
     "vscode": "^1.74.0"
   },

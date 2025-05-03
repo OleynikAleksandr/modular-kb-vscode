@@ -2,7 +2,6 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import * as net from 'net';
-import * as vscode from 'vscode';
 
 /**
  * Интерфейс для VS Code OutputChannel
@@ -19,7 +18,7 @@ interface IOutputChannel {
  * Реализует интерфейс IOutputChannel для совместимости
  * 
  * ВАЖНО: Для интеграции с VS Code в будущем:
- * 1. Раскомментируйте импорт vscode в начале файла
+ * 1. Добавьте импорт vscode в начале файла
  * 2. Используйте vscode.window.createOutputChannel вместо этого класса
  */
 class ConsoleOutputChannelAdapter implements IOutputChannel {
@@ -27,6 +26,7 @@ class ConsoleOutputChannelAdapter implements IOutputChannel {
     
     constructor(channelName: string) {
         this.channelName = channelName;
+        console.log(`[${channelName}] Output channel created`);
     }
     
     appendLine(value: string): void {
@@ -39,13 +39,13 @@ class ConsoleOutputChannelAdapter implements IOutputChannel {
 
 /**
  * Класс для управления процессом прокси-сервера
- * В версии 0.5.3 работает с VS Code Output Panel для улучшенного логирования
+ * В версии 0.5.3 работает с консольным выводом для улучшенного логирования
  * 
- * ВАЖНО: Для отключения интеграции с VS Code в будущем:
- * 1. Закомментируйте импорт vscode в начале файла
- * 2. Измените конструктор для принятия строки extensionPath
- * 3. Используйте ConsoleOutputChannelAdapter вместо vscode.window.createOutputChannel
- * 4. Используйте console.warn вместо vscode.window.showWarningMessage
+ * ВАЖНО: Для включения интеграции с VS Code в будущем:
+ * 1. Добавьте импорт vscode в начале файла
+ * 2. Измените конструктор для использования vscode.ExtensionContext
+ * 3. Используйте vscode.window.createOutputChannel вместо ConsoleOutputChannelAdapter
+ * 4. Используйте vscode.window.showWarningMessage вместо console.warn
  */
 export class ProxyManager {
     private readonly proxyPath: string;
@@ -62,7 +62,7 @@ export class ProxyManager {
     constructor(private extensionPath: string) {
         this.proxyPath = path.join(extensionPath, 'dist', 'proxy.js');
         
-        this.outputChannel = vscode.window.createOutputChannel('ModularKB Proxy');
+        this.outputChannel = new ConsoleOutputChannelAdapter('ModularKB Proxy');
         this.outputChannel.show();
         
         this.log(`ProxyManager initialized. Proxy path: ${this.proxyPath}`);
@@ -106,7 +106,7 @@ export class ProxyManager {
             this.log('WARNING: No proxy environment variables are set. Copilot Chat may not use the proxy.', true);
             this.log('Please set HTTP_PROXY and HTTPS_PROXY environment variables for Copilot Chat 0.26.x', true);
             
-            vscode.window.showWarningMessage(
+            console.warn(
                 'No proxy environment variables detected. Due to bug #7802 in Copilot Chat 0.26.x, ' +
                 'please set HTTP_PROXY and HTTPS_PROXY environment variables instead of GH_COPILOT_OVERRIDE_PROXY_URL.'
             );
@@ -365,7 +365,7 @@ export class ProxyManager {
             this.log(`Recommended values: HTTP_PROXY=${proxyUrl}, HTTPS_PROXY=${proxyUrl}`, true);
             this.log('These variables are required for Copilot Chat 0.26.x due to bug #7802', true);
             
-            vscode.window.showWarningMessage(
+            console.warn(
                 `Proxy is running on ${proxyUrl}, but HTTP_PROXY and HTTPS_PROXY are not set. ` +
                 'Due to bug #7802 in Copilot Chat 0.26.x, please set these variables.'
             );
