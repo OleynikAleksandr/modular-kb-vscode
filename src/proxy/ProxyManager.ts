@@ -2,6 +2,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import * as net from 'net';
+import * as vscode from 'vscode';
 
 /**
  * Интерфейс для VS Code OutputChannel
@@ -38,24 +39,13 @@ class ConsoleOutputChannelAdapter implements IOutputChannel {
 
 /**
  * Класс для управления процессом прокси-сервера
- * В версии 0.5.2 работает полностью независимо от VS Code и Orchestrator
+ * В версии 0.5.3 работает с VS Code Output Panel для улучшенного логирования
  * 
- * ВАЖНО: Для интеграции с VS Code в будущем:
- * 1. Раскомментируйте импорт vscode в начале файла
- * 2. Измените конструктор для принятия vscode.ExtensionContext
- * 3. Используйте vscode.window.showWarningMessage вместо console.warn
- * 
- * Пример интеграции с VS Code:
- * ```typescript
- * // import * as vscode from 'vscode';
- * 
- * constructor(context: vscode.ExtensionContext) {
- *   this.proxyPath = path.join(context.extensionPath, 'dist', 'proxy.js');
- *   this.outputChannel = vscode.window.createOutputChannel('ModularKB Proxy Manager');
- *   this.outputChannel.show();
- *   this.log(`ProxyManager initialized. Proxy path: ${this.proxyPath}`);
- * }
- * ```
+ * ВАЖНО: Для отключения интеграции с VS Code в будущем:
+ * 1. Закомментируйте импорт vscode в начале файла
+ * 2. Измените конструктор для принятия строки extensionPath
+ * 3. Используйте ConsoleOutputChannelAdapter вместо vscode.window.createOutputChannel
+ * 4. Используйте console.warn вместо vscode.window.showWarningMessage
  */
 export class ProxyManager {
     private readonly proxyPath: string;
@@ -72,9 +62,11 @@ export class ProxyManager {
     constructor(private extensionPath: string) {
         this.proxyPath = path.join(extensionPath, 'dist', 'proxy.js');
         
-        this.outputChannel = new ConsoleOutputChannelAdapter('ModularKB Proxy Manager');
+        this.outputChannel = vscode.window.createOutputChannel('ModularKB Proxy');
+        this.outputChannel.show();
         
         this.log(`ProxyManager initialized. Proxy path: ${this.proxyPath}`);
+        this.log(`Log directory: ${path.join(process.env.USERPROFILE || process.env.HOME || '', '.orchestrator', 'logs')}`);
     }
     
     /**
