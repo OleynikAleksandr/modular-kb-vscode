@@ -1,5 +1,6 @@
 // The module 'vscode' contains the VS Code extensibility API
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { ModuleRegistry } from './core/registry/ModuleRegistry';
 import { CoreManager } from './core/CoreManager';
 import { ProxyManager } from './proxy/ProxyManager';
@@ -287,6 +288,52 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	// Register command to create patch script for Copilot Chat
+	const createPatchScriptCommand = vscode.commands.registerCommand('kb.createPatchScript', async () => {
+		try {
+			console.log('Выполнена команда "kb.createPatchScript"');
+			const scriptPath = proxyManager.createPatchScript();
+			if (scriptPath) {
+				vscode.window.showInformationMessage(
+					`Patch script created at ${scriptPath}. Run this script to fix bug #7802 in Copilot Chat 0.26.x.`,
+					'Open Folder'
+				).then(selection => {
+					if (selection === 'Open Folder') {
+						vscode.env.openExternal(vscode.Uri.file(path.dirname(scriptPath)));
+					}
+				});
+			} else {
+				vscode.window.showErrorMessage('Failed to create patch script.');
+			}
+		} catch (error) {
+			console.error('Ошибка при создании скрипта патча:', error);
+			vscode.window.showErrorMessage(`Error creating patch script: ${error instanceof Error ? error.message : error}`);
+		}
+	});
+	
+	// Register command to create proxy setup script
+	const createProxySetupScriptCommand = vscode.commands.registerCommand('kb.createProxySetupScript', async () => {
+		try {
+			console.log('Выполнена команда "kb.createProxySetupScript"');
+			const scriptPath = proxyManager.createProxySetupScript();
+			if (scriptPath) {
+				vscode.window.showInformationMessage(
+					`Proxy setup script created at ${scriptPath}. Run this script to set HTTP_PROXY and HTTPS_PROXY environment variables.`,
+					'Open Folder'
+				).then(selection => {
+					if (selection === 'Open Folder') {
+						vscode.env.openExternal(vscode.Uri.file(path.dirname(scriptPath)));
+					}
+				});
+			} else {
+				vscode.window.showErrorMessage('Failed to create proxy setup script.');
+			}
+		} catch (error) {
+			console.error('Ошибка при создании скрипта настройки прокси:', error);
+			vscode.window.showErrorMessage(`Error creating proxy setup script: ${error instanceof Error ? error.message : error}`);
+		}
+	});
+
 	// Register all commands
 	context.subscriptions.push(
 		scanModulesCommand,
@@ -294,7 +341,9 @@ export async function activate(context: vscode.ExtensionContext) {
 		startCoreCommand,
 		stopCoreCommand,
 		startProxyCommand,
-		stopProxyCommand
+		stopProxyCommand,
+		createPatchScriptCommand,
+		createProxySetupScriptCommand
 	);
 
 	// Scan and load external modules on startup

@@ -67,6 +67,50 @@ export class ProxyManager {
         
         this.log(`ProxyManager initialized. Proxy path: ${this.proxyPath}`);
         this.log(`Log directory: ${path.join(process.env.USERPROFILE || process.env.HOME || '', '.orchestrator', 'logs')}`);
+        
+        // Проверяем наличие переменных окружения для прокси
+        this.checkProxyEnvironmentVariables();
+    }
+    
+    /**
+     * Проверяет наличие переменных окружения для прокси
+     * и выводит информацию о них
+     */
+    private checkProxyEnvironmentVariables(): void {
+        const ghCopilotProxy = process.env.GH_COPILOT_OVERRIDE_PROXY_URL;
+        const httpProxy = process.env.HTTP_PROXY || process.env.http_proxy;
+        const httpsProxy = process.env.HTTPS_PROXY || process.env.https_proxy;
+        
+        this.log('Checking proxy environment variables:');
+        
+        if (ghCopilotProxy) {
+            this.log(`GH_COPILOT_OVERRIDE_PROXY_URL is set to: ${ghCopilotProxy}`);
+            this.log('NOTE: This variable may not work with Copilot Chat 0.26.x due to bug #7802');
+        } else {
+            this.log('GH_COPILOT_OVERRIDE_PROXY_URL is not set');
+        }
+        
+        if (httpProxy) {
+            this.log(`HTTP_PROXY is set to: ${httpProxy}`);
+        } else {
+            this.log('HTTP_PROXY is not set');
+        }
+        
+        if (httpsProxy) {
+            this.log(`HTTPS_PROXY is set to: ${httpsProxy}`);
+        } else {
+            this.log('HTTPS_PROXY is not set');
+        }
+        
+        if (!ghCopilotProxy && !httpProxy && !httpsProxy) {
+            this.log('WARNING: No proxy environment variables are set. Copilot Chat may not use the proxy.', true);
+            this.log('Please set HTTP_PROXY and HTTPS_PROXY environment variables for Copilot Chat 0.26.x', true);
+            
+            vscode.window.showWarningMessage(
+                'No proxy environment variables detected. Due to bug #7802 in Copilot Chat 0.26.x, ' +
+                'please set HTTP_PROXY and HTTPS_PROXY environment variables instead of GH_COPILOT_OVERRIDE_PROXY_URL.'
+            );
+        }
     }
     
     /**
@@ -215,22 +259,8 @@ export class ProxyManager {
             
             this.log(`Proxy successfully started on port ${port}`);
             
-            const proxyUrl = process.env.GH_COPILOT_OVERRIDE_PROXY_URL;
-            if (!proxyUrl) {
-                this.log('GH_COPILOT_OVERRIDE_PROXY_URL environment variable not set', true);
-                console.warn(
-                    'Environment variable GH_COPILOT_OVERRIDE_PROXY_URL is not set. ' +
-                    'Copilot Chat will not use the proxy. Launch VS Code with this variable set.'
-                );
-                
-                // ВАЖНО: Для интеграции с VS Code в будущем:
-                // vscode.window.showWarningMessage(
-                //     'Environment variable GH_COPILOT_OVERRIDE_PROXY_URL is not set. ' +
-                //     'Copilot Chat will not use the proxy. Launch VS Code with this variable set.'
-                // );
-            } else {
-                this.log(`GH_COPILOT_OVERRIDE_PROXY_URL is set to: ${proxyUrl}`);
-            }
+            // Проверяем переменные окружения после успешного запуска
+            this.updateProxyEnvironmentVariables(port);
             
             return true;
         } catch (error) {
@@ -306,6 +336,160 @@ export class ProxyManager {
         } catch (error) {
             this.log(`Error ensuring proxy availability: ${error instanceof Error ? error.message : String(error)}`, true);
             return false;
+        }
+    }
+    
+    /**
+     * Обновляет переменные окружения для прокси
+     * @param port Порт прокси
+     */
+    private updateProxyEnvironmentVariables(port: number): void {
+        const proxyUrl = `http://127.0.0.1:${port}`;
+        
+        // Проверяем GH_COPILOT_OVERRIDE_PROXY_URL
+        const ghCopilotProxy = process.env.GH_COPILOT_OVERRIDE_PROXY_URL;
+        if (!ghCopilotProxy) {
+            this.log('GH_COPILOT_OVERRIDE_PROXY_URL environment variable not set', true);
+            this.log(`Recommended value: ${proxyUrl}`, true);
+            this.log('NOTE: This variable may not work with Copilot Chat 0.26.x due to bug #7802', true);
+        } else if (ghCopilotProxy !== proxyUrl) {
+            this.log(`WARNING: GH_COPILOT_OVERRIDE_PROXY_URL is set to ${ghCopilotProxy}, but proxy is running on ${proxyUrl}`, true);
+        }
+        
+        // Проверяем HTTP_PROXY и HTTPS_PROXY
+        const httpProxy = process.env.HTTP_PROXY || process.env.http_proxy;
+        const httpsProxy = process.env.HTTPS_PROXY || process.env.https_proxy;
+        
+        if (!httpProxy && !httpsProxy) {
+            this.log('HTTP_PROXY and HTTPS_PROXY environment variables not set', true);
+            this.log(`Recommended values: HTTP_PROXY=${proxyUrl}, HTTPS_PROXY=${proxyUrl}`, true);
+            this.log('These variables are required for Copilot Chat 0.26.x due to bug #7802', true);
+            
+            vscode.window.showWarningMessage(
+                `Proxy is running on ${proxyUrl}, but HTTP_PROXY and HTTPS_PROXY are not set. ` +
+                'Due to bug #7802 in Copilot Chat 0.26.x, please set these variables.'
+            );
+        } else {
+            if (httpProxy && httpProxy !== proxyUrl) {
+                this.log(`WARNING: HTTP_PROXY is set to ${httpProxy}, but proxy is running on ${proxyUrl}`, true);
+            }
+            if (httpsProxy && httpsProxy !== proxyUrl) {
+                this.log(`WARNING: HTTPS_PROXY is set to ${httpsProxy}, but proxy is running on ${proxyUrl}`, true);
+            }
+        }
+    }
+    
+    /**
+     * Создает скрипт для патча extension.js файла Copilot Chat
+     * @returns Путь к созданному скрипту
+     */
+    public createPatchScript(): string {
+        try {
+            this.log('Creating patch script for Copilot Chat extension.js');
+            
+            const scriptContent = `@echo off
+echo Patching Copilot Chat extension.js to fix bug #7802...
+echo.
+
+set VSCODE_DIR=%USERPROFILE%\\.vscode
+if not exist "%VSCODE_DIR%" (
+    echo VS Code directory not found at %VSCODE_DIR%
+    exit /b 1
+)
+
+set EXTENSION_DIR=%VSCODE_DIR%\\extensions
+if not exist "%EXTENSION_DIR%" (
+    echo Extensions directory not found at %EXTENSION_DIR%
+    exit /b 1
+)
+
+set FOUND=0
+for /d %%i in ("%EXTENSION_DIR%\\github.copilot-chat-0.26.*") do (
+    set COPILOT_DIR=%%i
+    set FOUND=1
+)
+
+if %FOUND% == 0 (
+    echo Copilot Chat 0.26.x not found in %EXTENSION_DIR%
+    exit /b 1
+)
+
+set EXTENSION_JS=%COPILOT_DIR%\\dist\\extension.js
+if not exist "%EXTENSION_JS%" (
+    echo extension.js not found at %EXTENSION_JS%
+    exit /b 1
+)
+
+echo Found extension.js at %EXTENSION_JS%
+echo Creating backup...
+copy "%EXTENSION_JS%" "%EXTENSION_JS%.bak"
+
+echo Patching extension.js...
+powershell -Command "(Get-Content '%EXTENSION_JS%') -replace 'const PROXY_URL = getSetting\\(\\\"debug.overrideProxyUrl\\\"\\) \\?\\? undefined;', 'const PROXY_URL = process.env.GH_COPILOT_OVERRIDE_PROXY_URL ?? getSetting(\\\"debug.overrideProxyUrl\\\") ?? undefined;' | Set-Content '%EXTENSION_JS%'"
+
+echo.
+echo Patch completed successfully!
+echo Now you can use GH_COPILOT_OVERRIDE_PROXY_URL environment variable with Copilot Chat 0.26.x
+echo.
+pause
+`;
+            
+            const scriptPath = path.join(this.extensionPath, 'patch-copilot-chat.bat');
+            fs.writeFileSync(scriptPath, scriptContent);
+            
+            this.log(`Patch script created at ${scriptPath}`);
+            
+            return scriptPath;
+        } catch (error) {
+            this.log(`Error creating patch script: ${error instanceof Error ? error.message : String(error)}`, true);
+            return '';
+        }
+    }
+    
+    /**
+     * Создает скрипт для настройки глобальных переменных HTTP_PROXY и HTTPS_PROXY
+     * @returns Путь к созданному скрипту
+     */
+    public createProxySetupScript(): string {
+        try {
+            this.log('Creating proxy setup script');
+            
+            const port = this.proxyPort || 7001;
+            const proxyUrl = `http://127.0.0.1:${port}`;
+            
+            const scriptContent = `@echo off
+echo Setting up global proxy variables for Copilot Chat...
+echo.
+
+echo Current proxy settings:
+echo HTTP_PROXY=%HTTP_PROXY%
+echo HTTPS_PROXY=%HTTPS_PROXY%
+echo.
+
+set /p CONFIRM=Set HTTP_PROXY and HTTPS_PROXY to ${proxyUrl}? (Y/N): 
+if /i "%CONFIRM%" neq "Y" exit /b
+
+echo.
+echo Setting user environment variables...
+setx HTTP_PROXY "${proxyUrl}"
+setx HTTPS_PROXY "${proxyUrl}"
+
+echo.
+echo Environment variables set successfully!
+echo Please restart VS Code for changes to take effect.
+echo.
+pause
+`;
+            
+            const scriptPath = path.join(this.extensionPath, 'setup-proxy-env.bat');
+            fs.writeFileSync(scriptPath, scriptContent);
+            
+            this.log(`Proxy setup script created at ${scriptPath}`);
+            
+            return scriptPath;
+        } catch (error) {
+            this.log(`Error creating proxy setup script: ${error instanceof Error ? error.message : String(error)}`, true);
+            return '';
         }
     }
     

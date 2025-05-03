@@ -48,6 +48,16 @@
         "command": "kb.stopProxy",
         "title": "Stop Copilot Chat Proxy",
         "category": "Modular KB"
+      },
+      {
+        "command": "kb.createPatchScript",
+        "title": "Create Copilot Chat Patch Script",
+        "category": "Modular KB"
+      },
+      {
+        "command": "kb.createProxySetupScript",
+        "title": "Create Proxy Setup Script",
+        "category": "Modular KB"
       }
     ]
   },
